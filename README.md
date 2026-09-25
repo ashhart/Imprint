@@ -1,3 +1,5 @@
+![Imprint: 63× faster time to first token, from 19s to 0.3s; author-reported result with cached context.](assets/imprint-63x.png)
+
 # Imprint
 
 **Hot-swappable memory for local AI.**
