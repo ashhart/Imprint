@@ -30,6 +30,30 @@ The storage, CLI, HTTP and worker lifecycle have automated tests using a symboli
 the MLX adapter has source-reviewed API integration and model-free codec tests.
 Standalone real-model equivalence and speed measurements have **not** yet been completed.
 
+## Compute your own blob
+
+Build a blob locally from the context you want available when a session opens:
+your harness's instructions, your assistant's memory, or the files your model keeps rereading.
+Imprint provides the CLI; you supply the context and a compatible local model.
+There is no universal OMP blob to download.
+
+Choose the starting point that matches your setup:
+
+| Your starting point | How to save it |
+| --- | --- |
+| Memory files, documents or project notes | Use `imprint compute --files` to prepare them before opening a session. |
+| Instructions with specific message roles | Use `imprint compute --recipe` to preserve their order and roles. |
+| A harness that sends its opening instructions | Use `imprint serve --learn first-turn` to capture a fresh request's instruction prefix. |
+| A session already held by the Imprint worker | Use `imprint compute --session` to export its retained state. |
+
+The initial computation still takes time; you do it ahead of use or during the first learning request.
+Later matching sessions can restore that work and process only the new suffix.
+Reuse requires matching rendered prefix tokens and compatible model, tokenizer and runtime settings.
+Changed instructions or a different model can require a new computation.
+
+Keep personal blobs private: they can contain source text, recoverable token IDs, local paths and computed state derived from private context.
+Build any public example from reviewed public inputs; removing readable metadata alone does not establish that a private blob is safe to share.
+
 ## Install
 
 Use Apple silicon macOS, Python 3.11 or newer, and an already downloaded MLX model directory:
@@ -49,23 +73,44 @@ It rejects other cache classes rather than saving incomplete state.
 Models need a chat template and an explicit context limit in their local configuration.
 No automatic model downloads or remote model code are enabled.
 
-## Save a memory file
+## Example: preload your assistant's memory
+
+Suppose your assistant starts with 300,000 tokens of reference material: your notes, project history and documents.
+You want that context ready across new sessions without making the model process the whole collection again each time.
+Put the material in your own files and prepare a saved profile:
 
 ```sh
-imprint compute --files memory.md --model /absolute/path/to/mlx-model --name workspace
-imprint serve --name workspace --idle-unload 5m
+imprint compute --files assistant-memory.md project-notes.md \
+  --model /absolute/path/to/mlx-model --name assistant-memory
+imprint serve --name assistant-memory --idle-unload 5m
 ```
 
 `compute` performs real model prefill when you run it, saves the blob, then exits its model worker.
 The files are copied into an embedded recipe in the supplied order, preserving their text.
 For explicit roles and template settings, use `--recipe examples/agent.recipe.json` instead of `--files`.
 
+The 300,000-token example is conditional, not a tested capacity claim:
+the model must support the full rendered context plus your new messages and answer reserve,
+and your machine needs enough RAM for the model, active cache and working allocations, plus disk space for the saved state.
+Saving a blob does not extend the context window or turn the source material into a smaller summary.
+Token counts depend on the selected model's tokenizer.
+
+`serve` starts the endpoint; its model worker loads on demand.
+To load the model ahead of your first question, run this in a second terminal while the server is running:
+
+```sh
+imprint use assistant-memory
+```
+
+Requests still restore their own cache state and process new tokens, so disk and generation latency remain.
+After idle unloading, the next request also pays model-loading time unless you activate the profile ahead of it.
+
 Send dynamic messages to the running server; it supplies the stored recipe:
 
 ```sh
 curl http://127.0.0.1:8460/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"workspace","messages":[{"role":"user","content":"hello"}],"max_tokens":128}'
+  -d '{"model":"assistant-memory","messages":[{"role":"user","content":"What should I work on next?"}],"max_tokens":128}'
 ```
 
 The response includes `usage.prompt_tokens_details.cached_tokens` and an `X-Imprint-Session-ID` header.
@@ -97,13 +142,28 @@ and Anthropic Messages require adapters that are not included in this release.
 Imprint runs its own model worker and does not import state from an unrelated process.
 Its store lease prevents a second Imprint worker using the same store; unrelated servers need separate memory planning.
 
-## Learn repeated context from requests
+## Example: reuse a fresh harness session's opening context
+
+A fresh agent session often sends the same instructions and project context before your first message.
+Precomputing that stable opening block lets later sessions reuse it, so a new conversation does not have to repeat all that prefill.
+For a compatible plain-text harness, start first-turn learning:
 
 ```sh
-imprint serve --model /absolute/path/to/mlx-model --name my-agent --learn
+imprint serve --model /absolute/path/to/mlx-model --name my-agent --learn first-turn
 ```
 
-`--learn` means `--learn first-turn`: send a fresh plain-text request containing leading
+Point the harness at `http://127.0.0.1:8460/v1` with model `my-agent`, then open a fresh session and send `hello`.
+The harness must include its normal opening instructions; `hello` by itself cannot capture context it never sends.
+That first request computes and saves the instructions, so it still pays the initial prefill cost.
+Open another fresh session with the same instructions to reuse them, and check `usage.prompt_tokens_details.cached_tokens` in the response.
+If you want the very first interactive session prepared in advance, use `compute --recipe` with those instructions instead.
+
+The OMP reference setup is separate from this standalone CLI.
+OMP requests containing tool definitions or tool messages need an adapter that this release does not include;
+these steps describe supported plain-text requests, not a drop-in OMP integration.
+The reported 0.3-second TTFT is a reference result, not a guarantee for every harness, model or cold start.
+
+Bare `--learn` also means `--learn first-turn`: send a fresh plain-text request containing leading
 system/developer instructions and one final user message.
 Imprint saves the stable instruction prefix while processing that request and returns the answer.
 Follow-up requests reuse it when their rendered tokens match, but their conversation history
@@ -130,8 +190,6 @@ without automatic selection of an older variant or garbage collection.
 
 This first release accepts **plain-text chat only**: tool calls, tool results, images, audio,
 custom stop strings and unsupported sampling options are rejected explicitly.
-An OMP request containing tools therefore needs a later tool-capable adapter;
-this release does not claim full OMP compatibility.
 
 ## Save a session already in memory
 
@@ -158,8 +216,8 @@ Export from arbitrary third-party processes is not implemented.
 
 ```sh
 imprint sleep
-imprint use workspace
-imprint inspect workspace
+imprint use assistant-memory
+imprint inspect assistant-memory
 ```
 
 The server automatically exits its worker after five idle minutes, or the configured timeout.
