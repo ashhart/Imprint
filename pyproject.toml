@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imprint-cache"
+version = "0.1.0"
+description = "Save and restore model-specific memory for local MLX models"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+mlx = ["mlx==0.31.2", "mlx-lm==0.31.3", "psutil>=5.9,<8"]
+
+
+[project.scripts]
+imprint = "imprint.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

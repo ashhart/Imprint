@@ -1,0 +1,15 @@
+{
+  "model": "my-agent",
+  "stream": true,
+  "max_tokens": 512,
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are the assistant for a fictional project."
+    },
+    {
+      "role": "user",
+      "content": "hello"
+    }
+  ]
+}

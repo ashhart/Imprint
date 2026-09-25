@@ -1,0 +1,17 @@
+{
+  "format": "afterglow.recipe.v1",
+  "name": "workspace",
+  "blocks": [
+    {
+      "role": "system",
+      "text": "Help with the project using the supplied reference material."
+    },
+    {
+      "role": "user",
+      "file": "memory.md"
+    }
+  ],
+  "tools": [],
+  "template_options": {},
+  "answer_reserve_tokens": 4096
+}
